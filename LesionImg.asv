@@ -71,7 +71,7 @@ classdef LesionImg < handle
         function img = get.edge(obj)
             if size(obj.edge) == 0
                 im_double = im2double(obj.im_seg);
-                obj.edge(:, :) = im_double(:, :, 2) == 1 & im_double(:, :, 1) < 1 & im_double(:, :, 3) < 1;
+                obj.edge = im_double(:, :, 2) == 1 & im_double(:, :, 1) < 1 & im_double(:, :, 3) < 1;
             end
             img = obj.edge;
         end

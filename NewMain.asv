@@ -14,7 +14,8 @@ lesiontypes = cellfun('isempty',strfind(filenames,'.0'));
 N = size(filenames, 2);
 
 for i = 1:N
-    current_image = LesionImg([BmodePath filenames{i}], [cd BmodeOrigPath]);
-    Results(i, :) = current_image.get_features;
+    current_image = LesionImg([BmodePath filenames{i}], BmodeOrigPath); 
+    
+    
     
 end

@@ -1,0 +1,7 @@
+function orig_path = GetOriginalFileName(seg_path, orig_dir)
+    filename = strsplit(seg_path, '\\');
+    filename = filename{end};
+    ind = strfind(filename, '_1');
+    orig_path = strcat(seg_path(1 : ind - 1), seg_path(ind + 2 : end));
+    
+end
