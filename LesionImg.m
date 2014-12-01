@@ -11,9 +11,13 @@ classdef LesionImg < handle
         perimeter = 0;
         major_axis = 0;
         minor_axis = 0;
+        lesion_height = 0;
+        lesion_width = 0;
         centroid = [];
         pxl_values = [];
         polar_crd = [];
+        bounded_box_crd = []
+        posterior_acoustic_parameters = []
         % Images
         bounded_lesion = [];
         mask = [];
@@ -37,6 +41,9 @@ classdef LesionImg < handle
         perimeter_area_ratio = -1;
         spiculation_low_freq_ratio = -1;
         spiculation_energy_compaction = -1;
+        posterior_shadowing = -Inf;
+        posterior_enhancement = -Inf;
+        posterior_no_pattern = -Inf
 %         measures = struct('area', 0, 'perimeter', 0, 'major_axis', 0,...
 %             'minor_axis', 0, 'pxl_values', [], 'polar_crd', []);
 %         images = struct('bounded_lesion', [], 'mask', [],...
@@ -105,6 +112,18 @@ classdef LesionImg < handle
             end
             minax = obj.minor_axis;
         end
+        function height = get.lesion_height(obj)
+            if obj.lesion_height == 0
+                obj.lesion_height = size(obj.bounded_mask, 1);
+            end
+            height = obj.lesion_height;
+        end
+        function width = get.lesion_width(obj)
+            if obj.lesion_width == 0
+                obj.lesion_width = size(obj.bounded_mask, 2);
+            end
+            width = obj.lesion_width;
+        end
         function com = get.centroid(obj)
             if size(obj.centroid) == 0
                 obj.centroid = struct2array(regionprops(obj.mask, 'Centroid'));
@@ -148,12 +167,19 @@ classdef LesionImg < handle
             end
             polar_crd = obj.polar_crd;
         end
+        function bounded_crd = get.bounded_box_crd(obj)
+            if size(obj.bounded_box_crd) == 0
+                obj.bounded_box_crd = floor(struct2array(regionprops(obj.mask, 'BoundingBox')));
+            end
+            bounded_crd = obj.bounded_box_crd;
+        end
         function bounded_lesion = get.bounded_lesion(obj)
             if size(obj.bounded_lesion) == 0
                 im_gray(:, :) = obj.im(:, :, 1);
-                bb = struct2array(regionprops(obj.mask, 'BoundingBox'));
-                obj.bounded_lesion = zeros(size(obj.mask, 1), size(obj.mask, 2));
-                obj.bounded_lesion(obj.bounded_mask) = im_gray(bb(2) : bb(4) - 1, bb(1) : bb(3) - 1);
+                bb = obj.bounded_box_crd;
+                obj.bounded_lesion = zeros(size(obj.bounded_mask, 1), size(obj.bounded_mask, 2), 'uint8');
+                obj.bounded_lesion = im_gray(bb(2) : bb(2) + bb(4) - 1, bb(1) : bb(1) + bb(3) - 1);
+                obj.bounded_lesion(~obj.bounded_mask) = 0;
             end
             bounded_lesion = obj.bounded_lesion;
         end
@@ -254,13 +280,95 @@ classdef LesionImg < handle
             end
             spiculation_energy_compaction = obj.spiculation_energy_compaction;
         end
+        function acoustic_parameters = get.posterior_acoustic_parameters(obj)
+            effective_width = 1 ./ 2;
+            effective_height = 2 ./ 3;
+            sliding_window_width = 1 ./ 3 .* effective_width;
+            if size(obj.posterior_acoustic_parameters) == 0
+                if obj.bounded_box_crd(1) + ceil((1 + effective_height) * obj.lesion_height) - 1 > size(obj.im, 1) || ...
+                        obj.bounded_box_crd(2) - ceil(effective_width * obj.lesion_width) < 1 || ...
+                        obj.bounded_box_crd(2) + ceil((1 + effective_width) .* obj.lesion_width) - 1 > size(obj.im, 2)
+                    obj.posterior_acoustic_parameters = [];
+                else
+                    L_upper = obj.bounded_box_crd(1) + obj.lesion_height;
+                    L_bottom = L_upper + ceil(effective_height .* obj.lesion_height);
+                    L_left = obj.bounded_box_crd(2) - ceil(effective_width .* obj.lesion_width);
+                    L_right = obj.bounded_box_crd(2) - 1;
+                    R_upper = L_upper;
+                    R_bottom = L_bottom;
+                    R_left = obj.bounded_box_crd(2) + obj.lesion_width;
+                    R_right = R_left + ceil(effective_width .* obj.lesion_width) - 1;
+                    P_upper = L_upper;
+                    P_bottom = L_bottom;
+                    P_left = L_right + round(1 ./ 6 * obj.lesion_width);
+                    P_right = R_left - round(1 ./ 6 * obj.lesion_width);
+                    L_img(:, :) = obj.im(L_upper : L_bottom, L_left : L_right, 1);
+                    R_img(:, :) = obj.im(R_upper : R_bottom, R_left : R_right, 1);
+                    P_img(:, :) = obj.im(P_upper : P_bottom, P_left : P_right, 1);
+                    L_avg = mean(L_img(:));
+                    R_avg = mean(R_img(:));
+                    P_avg = mean(P_img(:));
+                    P_slide_left = P_left; P_slide_right = P_slide_left + ceil(sliding_window_width .* obj.lesion_width);
+                    P_sliding = obj.im(P_upper : P_bottom, P_slide_left : P_slide_right, 1);
+                    P_min = mean(P_sliding(:));
+                    P_max = P_min;
+                    while P_slide_right <= P_right
+                        P_slide_left = P_slide_left + 1;
+                        P_slide_right = P_slide_right + 1;
+                        P_sliding = obj.im(P_upper : P_bottom, P_slide_left : P_slide_right, 1);
+                        P_sliding_avg = mean(P_sliding(:));
+                        if P_sliding_avg > P_max
+                            P_max = P_sliding_avg;
+                        elseif P_sliding_avg < P_min
+                            P_min = P_sliding_avg;
+                        end
+                    end
+                    obj.posterior_acoustic_parameters = [L_avg, R_avg, P_avg, P_min, P_max];
+                end
+            end
+            acoustic_parameters = obj.posterior_acoustic_parameters;
+        end
+        function posterior_shadowing = get.posterior_shadowing(obj)
+            if obj.posterior_shadowing == -Inf
+                if size(obj.posterior_acoustic_parameters) == 0
+                    obj.posterior_shadowing = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters;
+                    obj.posterior_shadowing = min(params(1), params(2)) - params(5);
+                end
+            end
+            posterior_shadowing = obj.posterior_shadowing;
+        end
+        function posterior_enhancement = get.posterior_enhancement(obj)
+            if obj.posterior_enhancement == -Inf
+                if size(obj.posterior_acoustic_parameters) == 0
+                    obj.posterior_enhancement = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters;
+                    obj.posterior_enhancement = params(4) - max(params(1), params(2));
+                end
+            end
+            posterior_enhancement = obj.posterior_enhancement;
+        end
+        function posterior_no_pattern = get.posterior_no_pattern(obj)
+            if obj.posterior_no_pattern == -Inf
+                if size(obj.posterior_acoustic_parameters) == 0
+                    obj.posterior_no_pattern = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters;
+                    obj.posterior_no_pattern = params(4) - max(params(1), params(2));
+                end
+            end
+            posterior_no_pattern = obj.posterior_enhancement;
+        end
         function features = get_features(obj)
             features = [obj.equiv_circle_ratio, obj.axes_ratio, ...
                 obj.circularity, obj.convex_ratio, obj.eccentricity, ...
                 obj.homogeneity, obj.light_ratio, obj.orientation, ...
                 obj.ovalness_ellipse_ratio, obj.ovalness_lesion_ratio, ...
                 obj.perimeter_area_ratio, obj.spiculation_low_freq_ratio, ...
-                obj.spiculation_energy_compaction];
+                obj.spiculation_energy_compaction, obj.posterior_shadowing, ...
+                obj.posterior_enhancement, obj.posterior_no_pattern];
         end
     end
 end
