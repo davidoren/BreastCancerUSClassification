@@ -38,7 +38,6 @@ for i = 1:N
     Results(i).PerimeterAreaRatio = LesionPerimeterAreaRatio(im);
     Results(i).EdgeAverageGradient = LesionBoundaryAverageGradient(im_msrm, im_orig_msrm);
     Results(i).LightenedAreaRatio = LesionLightenedAreaRatio(im_msrm);
-%     Results(i).EulerNumber = LesionEulerNumber(im);
     Results(i).EquivalentCircularAreaRatio = EquivalentCircularAreaRatio(im);
     Results(i).BDIP = LesionBDIP(im_msrm); % Block difference of inverse probabilities
     Results(i).BVLC = LesionBVLC(im_msrm); % Block variation of local correlation coefficients

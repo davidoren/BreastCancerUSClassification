@@ -1,11 +1,14 @@
 classdef LesionImg < handle
     properties
+        % General
         orig_path;
         seg_path;
         orig_dir;
         seg_dir;
         im;
         im_seg;
+        num_of_features;
+        titles = [];
         % Measures and Values
         area = 0;
         perimeter = 0;
@@ -20,10 +23,11 @@ classdef LesionImg < handle
         posterior_acoustic_parameters = []
         % Images
         bounded_lesion = [];
+        bounded_msrm = [];
         mask = [];
         bounded_mask = [];
         skewness = [];
-        msrm = [];
+        msrm_image = [];
         edge = [];
         bounded_edge = [];
         ellipse = [];
@@ -142,6 +146,12 @@ classdef LesionImg < handle
             end
             bounded_mask = obj.bounded_mask;
         end
+        function msrm_image = get.msrm_image(obj)
+            if size(obj.msrm_image) == 0
+                obj.msrm_image = msrm(obj.im(:, :, 1), 8);
+            end
+            msrm_image = obj.msrm_image;
+        end
         function ellipse = get.ellipse(obj)
             if size(obj.ellipse) == 0
                 maj_axis = obj.major_axis ./ 2; min_axis = obj.minor_axis ./ 2;
@@ -182,6 +192,16 @@ classdef LesionImg < handle
                 obj.bounded_lesion(~obj.bounded_mask) = 0;
             end
             bounded_lesion = obj.bounded_lesion;
+        end
+        function bounded_msrm = get.bounded_msrm(obj)
+            if size(obj.bounded_msrm) == 0
+                im_gray(:, :) = obj.msrm_image(:, :, 1);
+                bb = obj.bounded_box_crd;
+                obj.bounded_msrm = zeros(size(obj.bounded_mask, 1), size(obj.bounded_mask, 2), 'uint8');
+                obj.bounded_msrm = im_gray(bb(2) : bb(2) + bb(4) - 1, bb(1) : bb(1) + bb(3) - 1);
+                obj.bounded_msrm(~obj.bounded_mask) = 0;
+            end
+            bounded_msrm = obj.bounded_msrm;
         end
         function ratio = get.equiv_circle_ratio(obj)
             if obj.equiv_circle_ratio == -1
@@ -285,18 +305,18 @@ classdef LesionImg < handle
             effective_height = 2 ./ 3;
             sliding_window_width = 1 ./ 3 .* effective_width;
             if size(obj.posterior_acoustic_parameters) == 0
-                if obj.bounded_box_crd(1) + ceil((1 + effective_height) * obj.lesion_height) - 1 > size(obj.im, 1) || ...
-                        obj.bounded_box_crd(2) - ceil(effective_width * obj.lesion_width) < 1 || ...
-                        obj.bounded_box_crd(2) + ceil((1 + effective_width) .* obj.lesion_width) - 1 > size(obj.im, 2)
+                if obj.bounded_box_crd(2) + ceil((1 + effective_height) * obj.lesion_height) - 1 > size(obj.im, 1) || ...
+                        obj.bounded_box_crd(1) - ceil(effective_width * obj.lesion_width) < 1 || ...
+                        obj.bounded_box_crd(1) + ceil((1 + effective_width) .* obj.lesion_width) - 1 > size(obj.im, 2)
                     obj.posterior_acoustic_parameters = [];
                 else
-                    L_upper = obj.bounded_box_crd(1) + obj.lesion_height;
+                    L_upper = obj.bounded_box_crd(2) + obj.lesion_height;
                     L_bottom = L_upper + ceil(effective_height .* obj.lesion_height);
-                    L_left = obj.bounded_box_crd(2) - ceil(effective_width .* obj.lesion_width);
-                    L_right = obj.bounded_box_crd(2) - 1;
+                    L_left = obj.bounded_box_crd(1) - ceil(effective_width .* obj.lesion_width);
+                    L_right = obj.bounded_box_crd(1) - 1;
                     R_upper = L_upper;
                     R_bottom = L_bottom;
-                    R_left = obj.bounded_box_crd(2) + obj.lesion_width;
+                    R_left = obj.bounded_box_crd(1) + obj.lesion_width;
                     R_right = R_left + ceil(effective_width .* obj.lesion_width) - 1;
                     P_upper = L_upper;
                     P_bottom = L_bottom;
@@ -356,10 +376,10 @@ classdef LesionImg < handle
                     obj.posterior_no_pattern = -Inf;
                 else
                     params = obj.posterior_acoustic_parameters;
-                    obj.posterior_no_pattern = params(4) - max(params(1), params(2));
+                    obj.posterior_no_pattern = min(abs(params(1) - params(3)), abs(params(2) - params(3)));
                 end
             end
-            posterior_no_pattern = obj.posterior_enhancement;
+            posterior_no_pattern = obj.posterior_no_pattern;
         end
         function features = get_features(obj)
             features = [obj.equiv_circle_ratio, obj.axes_ratio, ...
@@ -369,6 +389,25 @@ classdef LesionImg < handle
                 obj.perimeter_area_ratio, obj.spiculation_low_freq_ratio, ...
                 obj.spiculation_energy_compaction, obj.posterior_shadowing, ...
                 obj.posterior_enhancement, obj.posterior_no_pattern];
+        end
+        function num_features = get.num_of_features(obj)
+            num_features = size(obj.get_features, 2);
+        end
+        function titles = get.titles(obj)
+            if size(obj.titles) == 0
+                props = properties(obj);
+                obj.titles = props(end - obj.num_of_features : end)';
+            end
+            titles = obj.titles;
+        end
+        function sz = get_size(obj)
+            props = properties(obj);
+            sz = 0;
+            for ii = 1:length(props)
+                currentProperty = getfield(obj, char(props(ii)));
+                s = whos('currentProperty');
+                sz = sz + s.bytes;
+            end
         end
     end
 end
