@@ -19,12 +19,14 @@ classdef LesionImg < handle
         centroid = [];
         pxl_values = [];
         polar_crd = [];
-        bounded_box_crd = []
-        posterior_acoustic_parameters = []
+        bounded_box_crd = [];
+        posterior_acoustic_parameters = [];
+        posterior_acoustic_parameters_msrm = [];
         % Images
         bounded_lesion = [];
         bounded_msrm = [];
         mask = [];
+        surround_mask = [];
         bounded_mask = [];
         skewness = [];
         msrm_image = [];
@@ -47,7 +49,12 @@ classdef LesionImg < handle
         spiculation_energy_compaction = -1;
         posterior_shadowing = -Inf;
         posterior_enhancement = -Inf;
-        posterior_no_pattern = -Inf
+        posterior_no_pattern = -Inf;
+        posterior_shadowing_msrm = -Inf;
+        posterior_enhancement_msrm = -Inf;
+        posterior_no_pattern_msrm = -Inf;
+        texture_ratio = -1;
+        texture_ratio_without_posterior = -1;
 %         measures = struct('area', 0, 'perimeter', 0, 'major_axis', 0,...
 %             'minor_axis', 0, 'pxl_values', [], 'polar_crd', []);
 %         images = struct('bounded_lesion', [], 'mask', [],...
@@ -139,6 +146,12 @@ classdef LesionImg < handle
                 obj.mask = bwfill(obj.edge, 'holes', 8);
             end
             mask = obj.mask;
+        end
+        function surround_mask = get.surround_mask(obj)
+            if size(obj.surround_mask) == 0
+                obj.surround_mask = xor(imdilate(obj.mask, strel('disk', 10)), obj.mask);
+            end
+            surround_mask = obj.surround_mask;
         end
         function bounded_mask = get.bounded_mask(obj)
             if size(obj.bounded_mask) == 0
@@ -348,6 +361,54 @@ classdef LesionImg < handle
             end
             acoustic_parameters = obj.posterior_acoustic_parameters;
         end
+        function acoustic_parameters = get.posterior_acoustic_parameters_msrm(obj)
+            effective_width = 1 ./ 2;
+            effective_height = 2 ./ 3;
+            sliding_window_width = 1 ./ 3 .* effective_width;
+            if size(obj.posterior_acoustic_parameters_msrm) == 0
+                if obj.bounded_box_crd(2) + ceil((1 + effective_height) * obj.lesion_height) - 1 > size(obj.im, 1) || ...
+                        obj.bounded_box_crd(1) - ceil(effective_width * obj.lesion_width) < 1 || ...
+                        obj.bounded_box_crd(1) + ceil((1 + effective_width) .* obj.lesion_width) - 1 > size(obj.im, 2)
+                    obj.posterior_acoustic_parameters_msrm = [];
+                else
+                    L_upper = obj.bounded_box_crd(2) + obj.lesion_height;
+                    L_bottom = L_upper + ceil(effective_height .* obj.lesion_height);
+                    L_left = obj.bounded_box_crd(1) - ceil(effective_width .* obj.lesion_width);
+                    L_right = obj.bounded_box_crd(1) - 1;
+                    R_upper = L_upper;
+                    R_bottom = L_bottom;
+                    R_left = obj.bounded_box_crd(1) + obj.lesion_width;
+                    R_right = R_left + ceil(effective_width .* obj.lesion_width) - 1;
+                    P_upper = L_upper;
+                    P_bottom = L_bottom;
+                    P_left = L_right + round(1 ./ 6 * obj.lesion_width);
+                    P_right = R_left - round(1 ./ 6 * obj.lesion_width);
+                    L_img(:, :) = obj.msrm_image(L_upper : L_bottom, L_left : L_right, 1);
+                    R_img(:, :) = obj.msrm_image(R_upper : R_bottom, R_left : R_right, 1);
+                    P_img(:, :) = obj.msrm_image(P_upper : P_bottom, P_left : P_right, 1);
+                    L_avg = mean(L_img(:));
+                    R_avg = mean(R_img(:));
+                    P_avg = mean(P_img(:));
+                    P_slide_left = P_left; P_slide_right = P_slide_left + ceil(sliding_window_width .* obj.lesion_width);
+                    P_sliding = obj.msrm_image(P_upper : P_bottom, P_slide_left : P_slide_right, 1);
+                    P_min = mean(P_sliding(:));
+                    P_max = P_min;
+                    while P_slide_right <= P_right
+                        P_slide_left = P_slide_left + 1;
+                        P_slide_right = P_slide_right + 1;
+                        P_sliding = obj.im(P_upper : P_bottom, P_slide_left : P_slide_right, 1);
+                        P_sliding_avg = mean(P_sliding(:));
+                        if P_sliding_avg > P_max
+                            P_max = P_sliding_avg;
+                        elseif P_sliding_avg < P_min
+                            P_min = P_sliding_avg;
+                        end
+                    end
+                    obj.posterior_acoustic_parameters_msrm = [L_avg, R_avg, P_avg, P_min, P_max];
+                end
+            end
+            acoustic_parameters = obj.posterior_acoustic_parameters_msrm;
+        end
         function posterior_shadowing = get.posterior_shadowing(obj)
             if obj.posterior_shadowing == -Inf
                 if size(obj.posterior_acoustic_parameters) == 0
@@ -381,6 +442,63 @@ classdef LesionImg < handle
             end
             posterior_no_pattern = obj.posterior_no_pattern;
         end
+        function posterior_shadowing = get.posterior_shadowing_msrm(obj)
+            if obj.posterior_shadowing_msrm == -Inf
+                if size(obj.posterior_acoustic_parameters_msrm) == 0
+                    obj.posterior_shadowing_msrm = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters_msrm;
+                    obj.posterior_shadowing_msrm = min(params(1), params(2)) - params(5);
+                end
+            end
+            posterior_shadowing = obj.posterior_shadowing_msrm;
+        end
+        function posterior_enhancement = get.posterior_enhancement_msrm(obj)
+            if obj.posterior_enhancement_msrm == -Inf
+                if size(obj.posterior_acoustic_parameters_msrm) == 0
+                    obj.posterior_enhancement_msrm = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters_msrm;
+                    obj.posterior_enhancement_msrm = params(4) - max(params(1), params(2));
+                end
+            end
+            posterior_enhancement = obj.posterior_enhancement_msrm;
+        end
+        function posterior_no_pattern = get.posterior_no_pattern_msrm(obj)
+            if obj.posterior_no_pattern_msrm == -Inf
+                if size(obj.posterior_acoustic_parameters_msrm) == 0
+                    obj.posterior_no_pattern_msrm = -Inf;
+                else
+                    params = obj.posterior_acoustic_parameters_msrm;
+                    obj.posterior_no_pattern_msrm = min(abs(params(1) - params(3)), abs(params(2) - params(3)));
+                end
+            end
+            posterior_no_pattern = obj.posterior_no_pattern_msrm;
+        end
+        function texture_ratio = get.texture_ratio(obj)
+            if obj.texture_ratio == -1
+                msrm_values = obj.msrm_image(obj.mask);
+                msrm_mean = mean(msrm_values(:));
+                surround_values = obj.msrm_image(obj.surround_mask);
+                surround_mean = mean(surround_values(:));
+                obj.texture_ratio = msrm_mean ./ surround_mean;
+            end
+            texture_ratio = obj.texture_ratio;
+        end
+        function texture_ratio_without_posterior = get.texture_ratio_without_posterior(obj)
+            if obj.texture_ratio_without_posterior == -1
+                R = 10;
+                msrm_values = obj.msrm_image(obj.mask);
+                msrm_mean = mean(msrm_values(:));
+                [xx, yy] = meshgrid(-R : R);
+                nhood = and(xx .^ 2 + yy .^ 2 <= R ^ 2, yy < 0);
+                sur_mask = xor(imdilate(obj.mask, strel(nhood)), obj.mask);
+                surround_values = obj.msrm_image(sur_mask);
+                surround_mean = mean(surround_values(:));
+                obj.texture_ratio_without_posterior = msrm_mean ./ surround_mean;
+            end
+            texture_ratio_without_posterior = obj.texture_ratio_without_posterior;
+        end
         function features = get_features(obj)
             features = [obj.equiv_circle_ratio, obj.axes_ratio, ...
                 obj.circularity, obj.convex_ratio, obj.eccentricity, ...
@@ -388,7 +506,10 @@ classdef LesionImg < handle
                 obj.ovalness_ellipse_ratio, obj.ovalness_lesion_ratio, ...
                 obj.perimeter_area_ratio, obj.spiculation_low_freq_ratio, ...
                 obj.spiculation_energy_compaction, obj.posterior_shadowing, ...
-                obj.posterior_enhancement, obj.posterior_no_pattern];
+                obj.posterior_enhancement, obj.posterior_no_pattern, ...
+                obj.posterior_shadowing_msrm, obj.posterior_enhancement_msrm, ...
+                obj.posterior_no_pattern_msrm, obj.texture_ratio, ...
+                obj.texture_ratio_without_posterior];
         end
         function num_features = get.num_of_features(obj)
             num_features = size(obj.get_features, 2);
@@ -396,7 +517,7 @@ classdef LesionImg < handle
         function titles = get.titles(obj)
             if size(obj.titles) == 0
                 props = properties(obj);
-                obj.titles = props(end - obj.num_of_features : end)';
+                obj.titles = props(end - obj.num_of_features + 1 : end)';
             end
             titles = obj.titles;
         end

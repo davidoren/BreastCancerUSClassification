@@ -23,20 +23,24 @@ for i = 1:N
 end
 %%
 % Construct a cell array with the titles and all results.
-Output = [{'Image No.', current_image.titles, 'Class'}; mat2cell(Results, ones(1, N), ones(1, num_of_features))];
+Output = cell(N + 1, size(current_image.titles, 2) + 2);
+Output(1, 1) = {'Image No.'};
+Output(1, 2 : end - 1) = current_image.titles;
+Output(1, end) = {'Class'};
+Output(2 : end, :) = num2cell(Results);
 
 % Replacing all features that could not be extracted with a question mark.
 for i = 1:numel(Output)
-    if Output{i} == -Inf
+    if isequal(Output{i}, -Inf)
         Output{i} = '?';
     end
 end
 
-for i = 1:N
-    if Output(i, end) == 0
-        Output(i, end) = 'Benign';
+for i = 2:size(Output, 1)
+    if isequal(Output{i, end}, 0)
+        Output{i, end} = 'Benign';
     else
-        Output(i, end) = 'Malignant';
+        Output{i, end} = 'Malignant';
     end
 end
 %%
