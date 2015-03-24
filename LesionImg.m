@@ -55,6 +55,12 @@ classdef LesionImg < handle
         posterior_no_pattern_msrm = -Inf;
         texture_ratio = -1;
         texture_ratio_without_posterior = -1;
+        boundary_variance = -1;
+%         bbox_width_height_ratio = -1;
+%         avg_width = -1;
+%         avg_height = -1;
+%         max_width = -1;
+%         max_height = -1;
 %         measures = struct('area', 0, 'perimeter', 0, 'major_axis', 0,...
 %             'minor_axis', 0, 'pxl_values', [], 'polar_crd', []);
 %         images = struct('bounded_lesion', [], 'mask', [],...
@@ -499,6 +505,62 @@ classdef LesionImg < handle
             end
             texture_ratio_without_posterior = obj.texture_ratio_without_posterior;
         end
+        function boundary_variance = get.boundary_variance(obj)
+            if obj.boundary_variance == -1
+                R = 4;
+                element = strel('disk', R);
+                nhood = element.getnhood;
+                nhoodheight = size(nhood, 1);
+                nhoodwidth = size(nhood, 2);
+                crd = struct2array(regionprops(obj.edge, 'PixelList'));
+                crd = crd(crd(:, 1) - floor(nhoodwidth ./ 2) > 0, :);
+                crd = crd(crd(:, 1) + floor(nhoodwidth ./ 2) <= size(obj.im, 2), :);
+                crd = crd(crd(:, 2) - floor(nhoodheight ./ 2) > 0, :);
+                crd = crd(crd(:, 2) + floor(nhoodheight ./ 2) <= size(obj.im, 1), :);
+                variance = zeros(size(crd, 1), 1);
+%                 curr_mask = false(size(obj.edge, 1), size(obj.edge, 2));
+                for i = 1:size(crd, 1)
+                    values = obj.im(crd(i, 2) - floor(nhoodheight ./ 2) : ...
+                        crd(i, 2) + floor(nhoodheight ./ 2), ...
+                        crd(i, 1) - floor(nhoodwidth ./ 2) : ...
+                        crd(i, 1) + floor(nhoodwidth ./ 2), 1);
+                    nhood_values = values(nhood(:));
+                    variance(i) = var(double(nhood_values));
+                end
+                obj.boundary_variance = mean(variance);
+            end
+            boundary_variance = obj.boundary_variance;
+        end
+%         function bbox_width_height_ratio = get.bbox_width_height_ratio(obj)
+%             if obj.bbox_width_height_ratio == -1
+%                 obj.bbox_width_height_ratio = obj.bounded_box_crd(3) ./ obj.bounded_box_crd(4);
+%             end
+%             bbox_width_height_ratio = obj.bbox_width_height_ratio;
+%         end
+%         function avg_width = get.avg_width(obj)
+%             if obj.avg_width == -1
+%                 obj.avg_width = obj.area ./ obj.bounded_box_crd(4);
+%             end
+%             avg_width = obj.avg_width;
+%         end
+%         function avg_height = get.avg_height(obj)
+%             if obj.avg_height == -1
+%                 obj.avg_height = obj.area ./ obj.bounded_box_crd(3);
+%             end
+%             avg_height = obj.avg_height;
+%         end
+%         function max_width = get.max_width(obj)
+%             if obj.max_width == -1
+%                 crd = 
+%             end
+%             max_width = obj.max_width;
+%         end
+%         function max_height = get.max_height(obj)
+%             if obj.max_height == -1
+%                 
+%             end
+%             max_height = obj.max_height;
+%         end
         function features = get_features(obj)
             features = [obj.equiv_circle_ratio, obj.axes_ratio, ...
                 obj.circularity, obj.convex_ratio, obj.eccentricity, ...
@@ -509,7 +571,7 @@ classdef LesionImg < handle
                 obj.posterior_enhancement, obj.posterior_no_pattern, ...
                 obj.posterior_shadowing_msrm, obj.posterior_enhancement_msrm, ...
                 obj.posterior_no_pattern_msrm, obj.texture_ratio, ...
-                obj.texture_ratio_without_posterior];
+                obj.texture_ratio_without_posterior, obj.boundary_variance];
         end
         function num_features = get.num_of_features(obj)
             num_features = size(obj.get_features, 2);
