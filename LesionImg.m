@@ -55,7 +55,9 @@ classdef LesionImg < handle
         posterior_no_pattern_msrm = -Inf;
         texture_ratio = -1;
         texture_ratio_without_posterior = -1;
-        boundary_variance = -1;
+        boundary_variance_mean = -1;
+        boundary_variance_median = -1;
+        boundary_variance_lower_decile = -1;
 %         bbox_width_height_ratio = -1;
 %         avg_width = -1;
 %         avg_height = -1;
@@ -505,7 +507,7 @@ classdef LesionImg < handle
             end
             texture_ratio_without_posterior = obj.texture_ratio_without_posterior;
         end
-        function boundary_variance = get.boundary_variance(obj)
+        function boundary_variance_mean = get.boundary_variance_mean(obj)
             if obj.boundary_variance == -1
                 R = 4;
                 element = strel('disk', R);
@@ -518,7 +520,7 @@ classdef LesionImg < handle
                 crd = crd(crd(:, 2) - floor(nhoodheight ./ 2) > 0, :);
                 crd = crd(crd(:, 2) + floor(nhoodheight ./ 2) <= size(obj.im, 1), :);
                 variance = zeros(size(crd, 1), 1);
-%                 curr_mask = false(size(obj.edge, 1), size(obj.edge, 2));
+%                 curr_mask = false(size(obj.edge, 1), size(obj.edge, 2));  
                 for i = 1:size(crd, 1)
                     values = obj.im(crd(i, 2) - floor(nhoodheight ./ 2) : ...
                         crd(i, 2) + floor(nhoodheight ./ 2), ...
@@ -527,9 +529,23 @@ classdef LesionImg < handle
                     nhood_values = values(nhood(:));
                     variance(i) = var(double(nhood_values));
                 end
-                obj.boundary_variance = mean(variance);
+                obj.boundary_variance_mean = mean(variance);
+                obj.boundary_variance_median = median(variance);
+                obj.boundary_variance_lower_decile = prctile(variance, 10);
             end
-            boundary_variance = obj.boundary_variance;
+            boundary_variance_mean = obj.boundary_variance;
+        end
+        function boundary_median = get.boundary_variance_median(obj)
+            if obj.boundary_variance_median == -1
+                obj.boundary_variance_mean;
+            end
+            boundary_median = obj.boundary_variance_median;
+        end
+        function boundary_decile = get.boundary_variance_lower_decile(obj)
+            if obj.boundary_variance_lower_decile == -1
+                obj.boundary_variance_mean;
+            end
+            boundary_decile = obj.boundary_variance_lower_decile;
         end
 %         function bbox_width_height_ratio = get.bbox_width_height_ratio(obj)
 %             if obj.bbox_width_height_ratio == -1
